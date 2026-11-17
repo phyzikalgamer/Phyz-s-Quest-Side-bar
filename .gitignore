@@ -1,0 +1,5 @@
+tools/lua-validation/
+tools/forever-addon-kit/
+__pycache__/
+tools/questbar-api-report.json
+*.bak

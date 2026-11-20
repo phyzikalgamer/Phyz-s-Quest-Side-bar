@@ -5,3 +5,4 @@ tools/questbar-api-report.json
 *.bak
 companion/
 tools/releases/
+tools/local-backups/

@@ -814,7 +814,7 @@ end
 -- Actions on a quest
 ---------------------------------------------------------------------------
 function QSB.IsActive(q)
-    if db and db.settings.followPhyzLeveling then return db.guideQuestID == q.questID end
+    if db and db.settings.followPhyzLeveling then return db.guideQuestIDs and db.guideQuestIDs[q.questID] or false end
     if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
         return C_SuperTrack.GetSuperTrackedQuestID() == q.questID
     end
@@ -824,18 +824,22 @@ end
 function QSB.SyncLevelingQuest()
     if not db then return end
     local id
-    local api = PhyzLevelingQuestBarAPI
-    if db.settings.followPhyzLeveling and api and api.GetCurrentStepQuestIDs then
+    local selected = {}
+    if db.settings.followPhyzLeveling and QSB.LevelingQuestIDs then
         local available = {}
         for index = 1, NumEntries() do
             local quest = Entry(index)
             if quest and not quest.isHeader and quest.questID then available[quest.questID] = true end
         end
-        for _, questID in ipairs(api.GetCurrentStepQuestIDs()) do
-            if available[questID] then id = questID; break end
+        for _, questID in ipairs(QSB.LevelingQuestIDs()) do
+            if available[questID] then selected[questID] = true; id = id or questID end
         end
     end
-    if db.guideQuestID ~= id then
+    local changed = db.guideQuestID ~= id
+    for questID in pairs(selected) do if not (db.guideQuestIDs and db.guideQuestIDs[questID]) then changed = true end end
+    for questID in pairs(db.guideQuestIDs or {}) do if not selected[questID] then changed = true end end
+    db.guideQuestIDs = selected
+    if changed then
         db.guideQuestID = id
         if db.settings.followPhyzLeveling and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
             C_SuperTrack.SetSuperTrackedQuestID(id or 0)
@@ -1276,12 +1280,21 @@ frame:SetScript("OnEvent", function(_, event, ...)
         db = PhyzQuestBarDB
         db.settings = db.settings or {}
         db.pinned = db.pinned or {}
-        if db.settings.followPhyzLeveling == nil and PhyzLevelingQuestBarAPI then
+        -- Apply the requested hide-on-load policy once; later settings changes persist.
+        if not db.trackerHideOnLoadApplied then
+            db.settings.hideTracker = true
+            db.trackerHideOnLoadApplied = true
+        end
+        if db.settings.followPhyzLeveling == nil and QSB.LevelingAvailable and QSB.LevelingAvailable() then
             db.settings.followPhyzLeveling = true
         end
         db.guideQuestID = nil
+        db.guideQuestIDs = nil
         for k, v in pairs(DEFAULTS) do if db.settings[k] == nil then db.settings[k] = v end end
         if QSB.UI then QSB.UI.Init(db) end
+        for _, delay in ipairs({ 0, 1, 3 }) do
+            C_Timer.After(delay, function() if QSB.UI then QSB.UI.ApplyTracker() end end)
+        end
         QSB.SyncLevelingQuest()
         QSB.levelingTicker = C_Timer.NewTicker(0.5, QSB.SyncLevelingQuest)
         if Spoken and Spoken.RegisterCallback then
@@ -1293,7 +1306,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
                               "QUEST_REMOVED", "QUEST_TURNED_IN", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED",
                               "ZONE_CHANGED_INDOORS", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED",
                               "GROUP_ROSTER_UPDATE", "CHAT_MSG_SYSTEM", "PLAYER_LEVEL_UP",
-                              "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "PLAYER_REGEN_DISABLED", "SUPER_TRACKING_CHANGED" }) do
+                              "BAG_UPDATE_DELAYED", "BAG_UPDATE_COOLDOWN", "PLAYER_REGEN_DISABLED", "SUPER_TRACKING_CHANGED", "ADDON_LOADED" }) do
             pcall(frame.RegisterEvent, frame, ev)
         end
         local spf = ShortestPathForever and ShortestPathForever.API
@@ -1303,7 +1316,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
         SlashCmdList.PHYZQUESTBAR = Slash
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED"
         or event == "ZONE_CHANGED_INDOORS" then
-        if db then OnZoneChanged() end
+        if db then QSB.UI.ApplyTracker(); OnZoneChanged() end
+    elseif event == "ADDON_LOADED" then
+        if db and QSB.UI then QSB.UI.ApplyTracker() end
     elseif event == "CHAT_MSG_SYSTEM" then
         OnSystemMessage(...)
     elseif event == "QUEST_ACCEPTED" then

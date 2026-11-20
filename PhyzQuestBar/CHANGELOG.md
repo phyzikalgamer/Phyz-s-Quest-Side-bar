@@ -1,5 +1,35 @@
 # Phyz's Quest bar changelog
 
+## 0.5.4 - 2026-11-18
+
+- Bind the original header texture file directly before applying atlas UV slices, preserving the border and cap pixels without atlas-local coordinate remapping.
+
+## 0.5.3 - 2026-11-18
+
+- Use Forever's original primary and secondary objective-header artwork, preserving pointed caps and bevelled bronze borders with fixed-width end slices.
+- Use the standard objective-tracker collapse/expand button artwork.
+- Keep header opacity consistent across the centre and both caps.
+
+## 0.5.2 - 2026-11-18
+
+- Hide Blizzard's objective tracker on login, after delayed UI loading, and when it tries to reappear. The setting remains configurable.
+- Keep the standard tracker hidden when the custom bar is hidden; restore only frames this addon suppressed when hiding is turned off.
+- Remove square selected-icon glows and large quest-row washes. Active quests use the focused circular icon and gold title.
+
+## 0.5.1 - 2026-11-18
+
+- Replace the stretched objective-header atlas with clean bronze rules and a dark gradient.
+- Read Phyz Leveling's live active steps directly, so leveling updates no longer disconnect guide following by replacing its manifest.
+- Highlight quests from active sticky steps as well as the current step, with a brighter icon, gold edge and subtle row tint.
+
+## 0.5.0 - 2026-11-18
+
+- Restyled as a transparent objective tracker with bronze header bars, gold headings and compact text view controls.
+- Keep active quest circles and voice buttons; move tracking and routing to the existing right-click menu and Ctrl-click route shortcut.
+- Remove redundant quest summaries when objective text is shown; descriptions remain available on hover.
+- Keep completed quests in Current Zone and preserve Phyz Leveling following, quest item buttons, party sharing and all three quest views.
+- Make the Current Zone Quests header collapse and expand its list.
+
 ## 0.4.1 - 2026-11-17
 
 - Move Share all quests to a small title-bar button beside Settings.

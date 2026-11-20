@@ -2,11 +2,12 @@
 ## Title: |cff66ddffPhyz's Quest bar|r
 ## Notes: Your whole quest log down the side of the screen, grouped by zone. The zone you're in opens by itself.
 ## Author: Phyz; based on Quest Sidebar by Kaeldrom
-## Version: 0.4.1
+## Version: 0.5.4
 ## SavedVariablesPerCharacter: PhyzQuestBarDB
 ## OptionalDeps: Spoken_Quests, PhyzLeveling, ShortestPathForever, QuestieDB, Questie
 ## AddonCompartmentFunc: PhyzQuestBar_Toggle
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 
 PhyzQuestBar.lua
+PhyzLevelingIntegration.lua
 PhyzQuestBar_UI.lua

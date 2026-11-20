@@ -1,6 +1,6 @@
 # Phyz's Quest bar
 
-A quest sidebar for **World of Warcraft: Forever**, with a Blizzard-style window, quests grouped by zone, and optional integration with [Phyz Leveling](https://github.com/phyzikalgamer/Phyz-s-Leveling-Addon).
+A quest sidebar for **World of Warcraft: Forever**, styled as a transparent Blizzard objective tracker, with quests grouped by zone and optional integration with [Phyz Leveling](https://github.com/phyzikalgamer/Phyz-s-Leveling-Addon).
 
 Keep your current zone's quests in view, see what is ready to hand in, and choose an active quest without opening your quest log every time.
 
@@ -36,8 +36,8 @@ Install the `PhyzQuestBar` folder itself, rather than the downloaded repository 
 | Quest title | Open the quest in the quest log |
 | Circular quest icon | Select or clear the active quest |
 | Play button | Play or stop the quest's spoken audio, when available |
-| Checkbox | Track or untrack the quest |
-| Map button or Ctrl-click a quest | Start or stop routing to that quest |
+| Right-click → Track / Stop tracking | Track or untrack the quest |
+| Ctrl-click a quest or use its right-click route action | Start or stop routing to that quest |
 | Right-click a quest | Open quest actions |
 | Shift-click a quest | Link it in chat |
 | Zone heading | Expand or collapse that zone |
@@ -59,15 +59,11 @@ The quest bar can be used on its own. Additional addons provide these features:
 
 ### Follow Phyz Leveling
 
-This repository includes a small bridge for Phyz Leveling:
+With Phyz Leveling installed and enabled, **Follow Phyz Leveling step** is on by default unless you previously disabled it. The quest bar reads the leveling addon's live active steps, including sticky objectives, and highlights matching quests already in your quest log. The current step takes priority for the quest arrow.
 
-1. Copy `integration/PhyzQuestBarBridge.lua` into `Interface/AddOns/PhyzLeveling/`.
-2. Add `PhyzQuestBarBridge.lua` on its own line at the end of `PhyzLeveling.toc`, unless it is already listed.
-3. Fully restart WoW with both addons enabled.
+Selected quests have a glowing icon, gold left edge and subtle background tint. Turn this setting off to select quests manually. Your choice is remembered.
 
-**Follow Phyz Leveling step** is enabled by default when the bridge is loaded and the setting has not previously been chosen. It selects the first unfinished quest in the current guide step that is already in your quest log. Steps without an eligible quest have no active guide quest.
-
-Turn this setting off to select active quests manually. Your choice is remembered. Updating Phyz Leveling may replace its manifest, so check that the bridge is still listed after an update.
+No changes to Phyz Leveling's files are required. The legacy bridge under `integration/` is retained for compatibility with older setups.
 
 ## Compatibility and support
 

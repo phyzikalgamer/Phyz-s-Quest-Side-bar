@@ -1,13 +1,16 @@
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
+import re
 
 root = Path(__file__).resolve().parent.parent
 output = root / 'tools' / 'releases'
 output.mkdir(parents=True, exist_ok=True)
-for folder, version, docs in [
-    (root / 'PhyzQuestBar', '0.4.1', root),
-    (root / 'companion' / 'PhyzPersonalGuides', '1.1.0', root / 'companion'),
+for folder, docs in [
+    (root / 'PhyzQuestBar', root),
+    (root / 'companion' / 'PhyzPersonalGuides', root / 'companion'),
 ]:
+    manifest = (folder / f'{folder.name}.toc').read_text(encoding='utf-8-sig')
+    version = re.search(r'^## Version:\s*(\S+)', manifest, re.M)[1]
     archive = output / f'{folder.name}-{version}.zip'
     with ZipFile(archive, 'w', ZIP_DEFLATED) as package:
         for source in folder.rglob('*'):

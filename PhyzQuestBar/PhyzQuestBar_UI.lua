@@ -20,7 +20,7 @@ local ORANGE = "|cffff9933"
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:13:13|t"
 local SECTION_H = 18
 local XPC = "|cffc8a2ff" -- XP purple, like the XP bar
-local PAD = 6
+local PAD = 8
 
 local GREY = "|cff9a9a9a"
 local GREEN = "|cff40c040"
@@ -52,7 +52,7 @@ local function LevelColor(level)
 end
 
 local function Width()
-    return math.max(MIN_W, (db and db.size and db.size[1]) or DEFAULT_W) - 40
+    return math.max(MIN_W, (db and db.size and db.size[1]) or DEFAULT_W) - 14
 end
 
 -- Grey = so far below your level it gives almost no XP (same rule as the game).
@@ -123,29 +123,73 @@ end
 -- frame, the zone name in large off-white text, and a flat yellow - / + on the right.
 local BRONZE = { 0.58, 0.45, 0.25, 1 }
 
+-- Use the client's objective header when available, with a quiet bronze fallback.
+local function TrackerBar(parent, height, primary)
+    local bar = parent:CreateTexture(nil, "BACKGROUND")
+    local atlas = primary and "ui-questtracker-primary-objective-header" or "UI-QuestTracker-Secondary-Objective-Header"
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+    if info and info.file and info.leftTexCoord and info.rightTexCoord and info.topTexCoord and info.bottomTexCoord
+        and info.width and info.width > 32 and info.height and info.height > 0 then
+        -- Slice the actual Forever header: retain the original end caps and bevel,
+        -- stretching only the centre as the user's tracker width changes.
+        local fraction = 16 / info.width
+        local capWidth = 16 * height / info.height
+        local left, right, top, bottom = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+        local span = right - left
+        local first = parent:CreateTexture(nil, "BACKGROUND")
+        local last = parent:CreateTexture(nil, "BACKGROUND")
+        -- Coordinates below are in the texture file's UV space. Bind the file
+        -- directly so atlas-local sampling cannot crop the decorative frame twice.
+        first:SetTexture(info.file)
+        last:SetTexture(info.file)
+        bar:SetTexture(info.file)
+        first:SetTexCoord(left, left + span * fraction, top, bottom)
+        bar:SetTexCoord(left + span * fraction, right - span * fraction, top, bottom)
+        last:SetTexCoord(right - span * fraction, right, top, bottom)
+        first:SetSize(capWidth, height)
+        last:SetSize(capWidth, height)
+        first:SetPoint("TOPLEFT", 0, 0)
+        last:SetPoint("TOPRIGHT", 0, 0)
+        bar:SetPoint("TOPLEFT", first, "TOPRIGHT", 0, 0)
+        bar:SetPoint("BOTTOMRIGHT", last, "BOTTOMLEFT", 0, 0)
+        bar.pieces = { first, last }
+        return bar
+    end
+    bar:SetPoint("TOPLEFT", 0, 0)
+    bar:SetPoint("TOPRIGHT", 0, 0)
+    bar:SetHeight(height)
+    -- Objective-Header contains baked-in trim that distorts at tracker widths.
+    SetGradient(bar, "HORIZONTAL", 0.20, 0.12, 0.035, 0.78, 0.06, 0.04, 0.01, 0.12)
+    for _, point in ipairs({ "TOP", "BOTTOM" }) do
+        local edge = parent:CreateTexture(nil, "BORDER")
+        edge:SetPoint(point .. "LEFT", bar, point .. "LEFT", 0, 0)
+        edge:SetPoint(point .. "RIGHT", bar, point .. "RIGHT", 0, 0)
+        edge:SetHeight(1)
+        edge:SetColorTexture(0.48, 0.32, 0.13, 0.9)
+    end
+    return bar
+end
+
+local function SetBarAlpha(bar, alpha)
+    bar:SetAlpha(alpha)
+    for _, piece in ipairs(bar.pieces or {}) do piece:SetAlpha(alpha) end
+end
+
+local function TrackerTab(parent, text, width)
+    local button = CreateFrame("Button", nil, parent)
+    button:SetSize(width, 20)
+    button:SetNormalFontObject("GameFontHighlightSmall")
+    button:SetHighlightFontObject("GameFontNormalSmall")
+    button:SetDisabledFontObject("GameFontNormalSmall")
+    button:SetText(text)
+    button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    return button
+end
+
 local function NewHeader()
     local h = CreateFrame("Button", nil, content)
     h:SetHeight(HEADER_H)
-    h.bar = h:CreateTexture(nil, "BACKGROUND")
-    h.bar:SetPoint("TOPLEFT", 1, -1)
-    h.bar:SetPoint("BOTTOMRIGHT", -1, 1)
-    -- warm brown at the top fading to near-black
-    SetGradient(h.bar, "VERTICAL", 0.06, 0.04, 0.02, 0.96, 0.21, 0.15, 0.08, 0.96)
-    h.border = {}
-    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
-        local t = h:CreateTexture(nil, "BORDER")
-        t:SetColorTexture(BRONZE[1], BRONZE[2], BRONZE[3], BRONZE[4])
-        if side == "TOP" or side == "BOTTOM" then
-            t:SetPoint(side .. "LEFT", 1, 0)
-            t:SetPoint(side .. "RIGHT", -1, 0)
-            t:SetHeight(1)
-        else
-            t:SetPoint("TOP" .. side, 0, -1)
-            t:SetPoint("BOTTOM" .. side, 0, 1)
-            t:SetWidth(1)
-        end
-        h.border[#h.border + 1] = t
-    end
+    h.bar = TrackerBar(h, HEADER_H)
     local hl = h:CreateTexture(nil, "HIGHLIGHT")
     hl:SetPoint("TOPLEFT", 1, -1)
     hl:SetPoint("BOTTOMRIGHT", -1, 1)
@@ -204,6 +248,11 @@ local function NewHeader()
     h:RegisterForClicks("LeftButtonUp")
     h:SetScript("OnClick", function(self)
         if UI.tab == "turnin" then return end -- turn-in places don't fold
+        if UI.tab == "zone" and not IsShiftKeyDown() then
+            UI.zoneCollapsed = not UI.zoneCollapsed
+            QSB.QueueRefresh()
+            return
+        end
         if IsShiftKeyDown() then QSB.TogglePin(self.zone) else QSB.ToggleZone(self.zone) end
     end)
     h:SetScript("OnEnter", function(self)
@@ -257,6 +306,19 @@ local function NewQuest()
     r.active:SetAllPoints()
     r.active:SetColorTexture(1, 0.72, 0.15, 0.14)
     r.active:Hide()
+    r.activeEdge = r:CreateTexture(nil, "BORDER")
+    r.activeEdge:SetPoint("TOPLEFT", 0, 0)
+    r.activeEdge:SetPoint("BOTTOMLEFT", 0, 0)
+    r.activeEdge:SetWidth(2)
+    r.activeEdge:SetColorTexture(1, 0.82, 0, 0.95)
+    r.activeEdge:Hide()
+    r.focus.glow = r.focus:CreateTexture(nil, "BACKGROUND")
+    r.focus.glow:SetPoint("TOPLEFT", -5, 5)
+    r.focus.glow:SetPoint("BOTTOMRIGHT", 5, -5)
+    r.focus.glow:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+    r.focus.glow:SetBlendMode("ADD")
+    r.focus.glow:SetVertexColor(1, 0.82, 0)
+    r.focus.glow:Hide()
 
     r.title = r:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     r.title:SetPoint("TOPLEFT", 30, -3)
@@ -286,7 +348,7 @@ local function NewQuest()
 
     r.open = CreateFrame("Button", nil, r)
     r.open:SetSize(16, 16)
-    r.open:SetPoint("RIGHT", r.track, "LEFT", -2, 0)
+    r.open:SetPoint("TOPRIGHT", -2, -2)
     r.open:SetNormalTexture(ICON_OPEN)
     r.open:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     r.open:SetScript("OnClick", function(self) QSB.ToggleVoice(self:GetParent().quest) end)
@@ -332,7 +394,7 @@ local function NewQuest()
     r.route:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     r.tag = r:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    r.tag:SetPoint("TOPRIGHT", r.route, "TOPLEFT", -4, -2)
+    r.tag:SetPoint("TOPRIGHT", r.open, "TOPLEFT", -4, -1)
     r.tag:SetJustifyH("RIGHT")
 
     r:SetScript("OnClick", function(self, button)
@@ -346,11 +408,15 @@ local function NewQuest()
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         local q = self.quest
         GameTooltip:AddLine(q.title)
+        local description = QSB.TurnIn(q) or QSB.Details(q)
+        if description then GameTooltip:AddLine(description, 0.85, 0.85, 0.85, true) end
+        if q.tracked then GameTooltip:AddLine("Tracked", 1, 0.82, 0) end
+        if QSB.IsRouted(q) then GameTooltip:AddLine("Route active", 1, 0.82, 0) end
         if q.party then
             if #q.party.have > 0 then GameTooltip:AddLine("Party on this quest: " .. table.concat(q.party.have, ", "), 0.4, 0.87, 1, true) end
             if #q.party.missing > 0 then GameTooltip:AddLine("Doesn't have it: " .. table.concat(q.party.missing, ", "), 0.6, 0.6, 0.6, true) end
         end
-        GameTooltip:AddLine("Click: open quest log   Circle: active quest   Play: spoken voice   Ctrl-click: route   Shift-click: link   Right-click: menu", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Click: open quest log   Circle: active quest   Play: spoken voice   Ctrl-click: route   Shift-click: link   Right-click: tracking and more", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -374,9 +440,17 @@ local function FillQuest(r, q, width, showDetails)
     end
     r.focus.dots:SetShown(not Questie and not q.complete)
     r.focus.dots:SetTextColor(1, 0.82, 0)
-    r.active:SetShown(active)
+    -- Questie's focused circular artwork already supplies the selected state.
+    -- Square additive glows and full-row washes clash with the transparent tracker.
+    r.active:Hide()
+    r.activeEdge:Hide()
+    r.focus.glow:Hide()
     r.open:SetShown(QSB.HasVoice(q))
-    r.open:SetNormalTexture(QSB.IsSpeaking(q) and "Interface\\Buttons\\UI-StopButton" or ICON_OPEN)
+    if Questie then
+        r.open:SetNormalTexture("Interface\\AddOns\\Questie\\Icons\\QuestLog" .. (QSB.IsSpeaking(q) and "Stop" or "Play") .. "Button")
+    else
+        r.open:SetNormalTexture(QSB.IsSpeaking(q) and "Interface\\Buttons\\UI-StopButton" or ICON_OPEN)
+    end
     if q.failed then r.icon:SetVertexColor(1, 0.3, 0.3) else r.icon:SetVertexColor(1, 1, 1) end
 
     local tag = q.tag and (TAG .. "(" .. q.tag .. ")|r") or ""
@@ -388,18 +462,20 @@ local function FillQuest(r, q, width, showDetails)
     end
     r.tag:SetText(tag)
     local tagW = tag ~= "" and ((r.tag:GetStringWidth() or 0) + 4) or 0
-    r.title:SetWidth(math.max(80, width - 30 - 70 - tagW))
-    r.title:SetText(LevelColor(q.level) .. "[" .. (q.level or "?") .. "] " .. q.title .. "|r")
+    r.title:SetWidth(math.max(80, width - 30 - 24 - tagW))
+    r.title:SetText((active and "|cffffd100" or LevelColor(q.level)) .. "[" .. (q.level or "?") .. "] " .. q.title .. "|r")
     r.title:SetShadowColor(0, 0, 0, 1)
     r.title:SetShadowOffset(1, -1)
     r.track:SetChecked(q.tracked)
+    -- Keep the tracker as compact as Blizzard's: these actions live in the quest menu.
+    r.track:Hide()
+    r.route:Hide()
     if QSB.IsRouted(q) then r.route.on:Show(); r.route.icon:SetDesaturated(false); r.route:SetAlpha(1)
     else r.route.on:Hide(); r.route:SetAlpha(0.8) end
     -- finished: stronger wash + gold edge in Current Zone, a lighter wash in All
     if q.complete then
-        r.ready:SetColorTexture(1, 0.82, 0, showDetails and 0.16 or 0.08)
-        r.ready:Show()
-        if showDetails then r.readyEdge:Show() else r.readyEdge:Hide() end
+        r.ready:Hide()
+        r.readyEdge:Hide()
     else
         r.ready:Hide()
         r.readyEdge:Hide()
@@ -437,7 +513,7 @@ local function FillQuest(r, q, width, showDetails)
 
     -- for a finished quest, say who to hand it to when the game tells us
     local details
-    if showDetails and not folded then
+    if showDetails and not folded and not objText then
         if q.complete then
             local place = QSB.TurnInPlace(q)
             details = QSB.TurnIn(q)
@@ -477,7 +553,7 @@ function UI.Draw(groups)
     if type(max) ~= "number" or max <= 0 then max = 25 end
     -- the count warns you before a quest giver turns you away
     local countColor = (total >= max and RED) or (total >= max - 3 and ORANGE) or GREY
-    if UI.SetTitle then UI.SetTitle("Phyz's Quest bar  " .. countColor .. total .. "/" .. max .. "|r") end
+    if UI.SetTitle then UI.SetTitle("All Objectives  " .. countColor .. total .. "/" .. max .. "|r") end
     UI.logFull = total >= max
 
     -- the Turn in tab shows how many are ready
@@ -508,7 +584,7 @@ function UI.Draw(groups)
         h:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
         -- in All, the zone you're in reads gold; pinned zones say so
         local name = (g.zone == here and UI.tab ~= "zone") and ("|cffffd100" .. g.zone .. "|r") or g.zone
-        h.text:SetText(name .. (db.pinned[g.zone] and "|cff66ddff  (pinned)|r" or ""))
+        h.text:SetText((UI.tab == "zone" and "Quests" or name) .. (db.pinned[g.zone] and "|cff66ddff  (pinned)|r" or ""))
         h.count:SetText((g.done > 0 and (GREEN .. g.done .. "|r/") or "") .. #g.quests)
         h.open = open
         h.quests = g.quests
@@ -521,7 +597,7 @@ function UI.Draw(groups)
             h.chain:Hide()
             h.text:SetPoint("RIGHT", -52, 0)
         end
-        h.bar:SetAlpha(math.max(0.35, db.settings.opacity or 1))
+        SetBarAlpha(h.bar, math.max(0.35, db.settings.opacity or 1))
         h:Show()
         y = y + HEADER_H + 4
     end
@@ -594,17 +670,16 @@ function UI.Draw(groups)
         -- Keep ready-to-turn-in quests in this zone as well as the Turn in tab.
         local rest = g and g.quests or {}
         if g then
-            Header(g, true)
-            ReadyLink()
-            local shown = Visible(rest)
+            Header(g, not UI.zoneCollapsed)
+            local shown = UI.zoneCollapsed and {} or Visible(rest)
             for _, q in ipairs(shown) do Quest(q, true) end
-            if #shown < #rest then
+            if not UI.zoneCollapsed and #shown < #rest then
                 empty:ClearAllPoints()
                 empty:SetPoint("TOPLEFT", content, "TOPLEFT", 8, -y - 4)
                 empty:SetText(GREY .. (#rest - #shown) .. " grey quest" .. (#rest - #shown == 1 and "" or "s") .. " hidden.|r")
                 empty:Show()
                 y = y + 22
-            elseif #rest == 0 then
+            elseif not UI.zoneCollapsed and #rest == 0 then
                 empty:ClearAllPoints()
                 empty:SetPoint("TOPLEFT", content, "TOPLEFT", 8, -y - 4)
                 empty:SetText(GREY .. "Nothing left to do in " .. g.zone .. ".|r")
@@ -755,6 +830,7 @@ function UI.Empty() return empty end
 -- Blizzard's tracker
 ---------------------------------------------------------------------------
 local hooked = {}
+local suppressed = {}
 -- restore = the player just switched hiding off (or closed us), so bring it back now
 function UI.ApplyTracker(restore)
     for _, name in ipairs({ "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame" }) do
@@ -763,12 +839,19 @@ function UI.ApplyTracker(restore)
             if not hooked[f] and f.HookScript then
                 hooked[f] = true
                 f:HookScript("OnShow", function(self)
-                    if db.settings.hideTracker and panel:IsShown() and not InCombatLockdown() then self:Hide() end
+                    if db.settings.hideTracker and not InCombatLockdown() then
+                        suppressed[self] = true
+                        self:Hide()
+                    end
                 end)
             end
-            if db.settings.hideTracker and panel:IsShown() then
-                if not InCombatLockdown() then f:Hide() end
-            elseif restore and not f:IsShown() and not InCombatLockdown() then
+            if db.settings.hideTracker then
+                if not InCombatLockdown() then
+                    if f:IsShown() then suppressed[f] = true end
+                    f:Hide()
+                end
+            elseif suppressed[f] and not InCombatLockdown() then
+                suppressed[f] = nil
                 f:Show()
             end
         end
@@ -820,7 +903,7 @@ function UI.ApplyOpacity()
     FadeTextures(panel, a)
     if type(panel.Inset) == "table" then FadeTextures(panel.Inset, a) end
     if UI.bar then FadeTextures(UI.bar, math.max(0.35, a)) end
-    for _, h in ipairs(headers) do h.bar:SetAlpha(math.max(0.35, a)) end
+    for _, h in ipairs(headers) do SetBarAlpha(h.bar, math.max(0.35, a)) end
 end
 
 ---------------------------------------------------------------------------
@@ -977,6 +1060,13 @@ local function HasAtlas(name)
 end
 
 local function StyleMinButton(b, minimized)
+    local native = minimized and "ui-questtrackerbutton-expand-all" or "ui-questtrackerbutton-collapse-all"
+    if HasAtlas(native) and b.SetNormalAtlas then
+        b:SetNormalAtlas(native)
+        b:SetPushedAtlas(native .. "-pressed")
+        if HasAtlas("ui-questtrackerbutton-red-highlight") then b:SetHighlightAtlas("ui-questtrackerbutton-red-highlight", "ADD") end
+        return
+    end
     -- modern clients: the red square buttons; older: the world map's smaller/bigger buttons
     local up = minimized and "RedButton-Expand" or "RedButton-Condense"
     if HasAtlas(up) and b.SetNormalAtlas then
@@ -1204,29 +1294,8 @@ function UI.ItemsDirty() return itemsDirty end -- tests
 
 function UI.Init(savedDB)
     db = savedDB
-    local ok, f = pcall(CreateFrame, "Frame", "PhyzQuestBarFrame", UIParent, "BasicFrameTemplateWithInset")
-    if not ok or not f then
-        f = CreateFrame("Frame", "PhyzQuestBarFrame", UIParent, "BackdropTemplate")
-        if f.SetBackdrop then
-            f:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 24,
-                insets = { left = 6, right = 6, top = 6, bottom = 6 } })
-        end
-    end
-    panel = f
-    -- Keep Blizzard's frame artwork. Only the compatibility fallback needs a backdrop.
-    if not panel.TitleText and panel.SetBackdrop then
-        panel:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 24,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-        panel:SetBackdropColor(0.12, 0.09, 0.055, 0.96)
-        panel:SetBackdropBorderColor(0.58, 0.43, 0.22, 1)
-    end
-    if panel.Inset then
-        panel.Inset:ClearAllPoints()
-        panel.Inset:SetPoint("TOPLEFT", 7, -58)
-        panel.Inset:SetPoint("BOTTOMRIGHT", -7, 7)
-    end
+    panel = CreateFrame("Frame", "PhyzQuestBarFrame", UIParent)
+    UI.titleBar = TrackerBar(panel, 28, true)
     local size = db.size or { DEFAULT_W, DEFAULT_H }
     if size[1] < MIN_W then size[1] = MIN_W end
     panel:SetSize(size[1], size[2])
@@ -1248,37 +1317,37 @@ function UI.Init(savedDB)
 
     local titleText = type(panel.TitleText) == "table" and panel.TitleText
     if not titleText then
-        titleText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        titleText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         titleText:SetPoint("TOPLEFT", 12, -9)
         titleText:SetPoint("TOPRIGHT", -50, -9)
     end
     titleText:SetTextColor(1, 0.82, 0)
     titleText:ClearAllPoints()
-    titleText:SetPoint("TOPLEFT", 14, -5)
-    titleText:SetPoint("TOPRIGHT", -78, -5)
+    titleText:SetPoint("TOPLEFT", 16, -7)
+    titleText:SetPoint("TOPRIGHT", -78, -7)
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     function UI.SetTitle(t) titleText:SetText(t) end
-    UI.SetTitle("Phyz's Quest bar")
+    UI.SetTitle("All Objectives")
 
     -- tabs
-    tabZone = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    tabZone = TrackerTab(panel, "Current Zone", 100)
     tabZone:SetSize(100, 22)
     tabZone:SetPoint("TOPLEFT", 10, -28)
     tabZone:SetText("Current Zone")
-    tabZone:SetDisabledFontObject("GameFontHighlight")
+    tabZone:SetDisabledFontObject("GameFontNormalSmall")
     tabZone:SetScript("OnClick", function() UI.SelectTab("zone") end)
-    tabAll = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    tabAll = TrackerTab(panel, "All", 44)
     tabAll:SetSize(44, 22)
     tabAll:SetPoint("LEFT", tabZone, "RIGHT", 3, 0)
     tabAll:SetText("All")
-    tabAll:SetDisabledFontObject("GameFontHighlight")
+    tabAll:SetDisabledFontObject("GameFontNormalSmall")
     tabAll:SetScript("OnClick", function() UI.SelectTab("all") end)
-    tabTurnIn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    tabTurnIn = TrackerTab(panel, "Turn in", 84)
     tabTurnIn:SetSize(84, 22)
     tabTurnIn:SetPoint("LEFT", tabAll, "RIGHT", 3, 0)
     tabTurnIn:SetText("Turn in")
-    tabTurnIn:SetDisabledFontObject("GameFontHighlight")
+    tabTurnIn:SetDisabledFontObject("GameFontNormalSmall")
     tabTurnIn:SetScript("OnClick", function() UI.SelectTab("turnin") end)
     tabTurnIn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1291,8 +1360,8 @@ function UI.Init(savedDB)
 
     -- scrolling list
     scroll = CreateFrame("ScrollFrame", nil, panel)
-    scroll:SetPoint("TOPLEFT", 13, -65)
-    scroll:SetPoint("BOTTOMRIGHT", -27, 15)
+    scroll:SetPoint("TOPLEFT", 0, -55)
+    scroll:SetPoint("BOTTOMRIGHT", -14, 12)
     content = CreateFrame("Frame", nil, scroll)
     content:SetSize(Width(), 1)
     scroll:SetScrollChild(content)
@@ -1300,8 +1369,8 @@ function UI.Init(savedDB)
     scroll:SetScript("OnMouseWheel", function(_, d) UI.Scroll(d) end)
 
     local bar = CreateFrame("Slider", nil, panel)
-    bar:SetPoint("TOPRIGHT", -10, -66)
-    bar:SetPoint("BOTTOMRIGHT", -10, 28)
+    bar:SetPoint("TOPRIGHT", -1, -57)
+    bar:SetPoint("BOTTOMRIGHT", -1, 20)
     bar:SetWidth(14)
     bar:SetOrientation("VERTICAL")
     bar:SetMinMaxValues(0, 0)
@@ -1322,7 +1391,7 @@ function UI.Init(savedDB)
     -- Current Zone: share every quest here with your party
     local share = CreateFrame("Button", nil, panel)
     share:SetSize(16, 16)
-    share:SetPoint("TOPRIGHT", -49, -4)
+    share:SetPoint("TOPRIGHT", -49, -6)
     share:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
     share:GetNormalTexture():SetVertexColor(0.85, 0.82, 0.74)
     share:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
@@ -1440,7 +1509,7 @@ function UI.Init(savedDB)
     -- discreet cog in the title bar for the settings
     local cog = CreateFrame("Button", nil, panel)
     cog:SetSize(15, 15)
-    cog:SetPoint("TOPRIGHT", -28, -4)
+    cog:SetPoint("TOPRIGHT", -28, -6)
     cog.icon = cog:CreateTexture(nil, "ARTWORK")
     cog.icon:SetAllPoints()
     -- our own white cog (Media\Cog.tga), tinted to match the title text
@@ -1471,7 +1540,7 @@ function UI.Init(savedDB)
         closeBtn:Hide()
         closeBtn:SetScript("OnShow", closeBtn.Hide)
     else
-        minBtn:SetPoint("TOPRIGHT", 2, 1)
+        minBtn:SetPoint("TOPRIGHT", -1, -2)
     end
     minBtn:SetScript("OnClick", function() UI.ToggleMinimized() end)
     minBtn:SetScript("OnEnter", function(self)
